@@ -1,0 +1,59 @@
+id: healthcare_policy
+name: Healthcare Data Governance
+version: 1
+extends: base_policy
+description: HIPAA-aligned rules for healthcare data environments
+
+rules:
+  - id: phi_restricted_access
+    name: PHI Restricted Access
+    description: PHI data access restricted to authorized medical roles
+    priority: 150
+    decision: BLOCK
+    condition:
+      all:
+        - field: context.session_data_classification
+          operator: equals
+          value: PHI
+        - field: context.user_role
+          operator: not_in
+          value:
+            - doctor
+            - nurse
+            - admin
+
+  - id: phi_write_hitl
+    name: PHI Write Requires Approval
+    description: Writing to PHI-classified data requires human approval
+    priority: 160
+    decision: REQUIRE_HITL
+    condition:
+      all:
+        - field: context.session_data_classification
+          operator: equals
+          value: PHI
+        - field: action.type
+          operator: equals
+          value: write
+        - field: context.human_approval_present
+          operator: equals
+          value: false
+
+  - id: phi_high_risk_write_block
+    name: High Risk PHI Write Block
+    description: Blocking critical risk write actions on PHI data classification
+    priority: 180
+    decision: BLOCK
+    condition:
+      all:
+        - field: context.session_data_classification
+          operator: equals
+          value: PHI
+        - field: action.type
+          operator: equals
+          value: write
+        - field: context.risk_level
+          operator: in
+          value:
+            - HIGH
+            - CRITICAL

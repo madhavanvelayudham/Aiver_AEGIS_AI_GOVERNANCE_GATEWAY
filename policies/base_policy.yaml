@@ -1,0 +1,90 @@
+id: base_policy
+name: AEGIS Base Policy
+version: 1
+extends: null
+description: Foundation governance rules for all AI agents
+
+rules:
+  - id: after_hours_write_hitl
+    name: After-Hours Write Protection
+    description: Write actions outside business hours require human approval
+    priority: 100
+    decision: REQUIRE_HITL
+    condition:
+      all:
+        - field: action.type
+          operator: equals
+          value: write
+        - field: context.is_business_hours
+          operator: equals
+          value: false
+        - field: context.human_approval_present
+          operator: equals
+          value: false
+
+  - id: block_large_data_scope
+    name: Large Data Scope Block
+    description: Block actions affecting more than 1000 records
+    priority: 90
+    decision: BLOCK
+    condition:
+      all:
+        - field: context.data_scope_size
+          operator: greater_than
+          value: 1000
+
+  - id: violation_threshold_suspend
+    name: Violation Threshold Suspension
+    description: Suspend session after reaching violation threshold
+    priority: 200
+    decision: SUSPEND_SESSION
+    condition:
+      all:
+        - field: context.previous_violations_in_session
+          operator: greater_than_or_equals
+          value: 3
+
+  - id: delete_requires_admin
+    name: Delete Requires Admin
+    description: Only admin users may perform delete actions
+    priority: 110
+    decision: BLOCK
+    condition:
+      all:
+        - field: action.type
+          operator: equals
+          value: delete
+        - field: context.user_role
+          operator: not_equals
+          value: admin
+
+  - id: block_critical_risk_delete
+    name: Block Critical Risk Delete
+    description: Delete actions with critical risk are blocked
+    priority: 170
+    decision: BLOCK
+    condition:
+      all:
+        - field: action.type
+          operator: equals
+          value: delete
+        - field: context.risk_level
+          operator: equals
+          value: CRITICAL
+
+  - id: high_anomaly_write_hitl
+    name: High Anomaly Write Protection
+    description: High anomaly write actions require human approval
+    priority: 105
+    decision: REQUIRE_HITL
+    condition:
+      all:
+        - field: action.type
+          operator: equals
+          value: write
+        - field: context.anomaly_score
+          operator: greater_than
+          value: 60
+        - field: context.human_approval_present
+          operator: equals
+          value: false
