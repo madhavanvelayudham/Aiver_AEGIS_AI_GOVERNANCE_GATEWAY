@@ -34,15 +34,25 @@ class AgentService:
         session_id: str,
         message: str,
         db: AsyncSession,
-        request_id: str
+        request_id: str,
+        llm_provider: Optional[str] = None
     ) -> dict:
         """Runs the agent loop: LLM propose -> validation -> AEGIS govern -> execute tool."""
         # 1. Fetch available tools list to provide as system prompts to LLM
         available_tools = self.tool_registry.get_available_tools()
         
+        # Determine effective LLM provider for this request
+        active_llm_provider = self.llm_provider
+        if llm_provider:
+            prov_name = llm_provider.strip().lower()
+            if prov_name == "gemini":
+                active_llm_provider = GeminiProvider()
+            elif prov_name == "mock":
+                active_llm_provider = MockLLMProvider()
+
         # 2. LLM proposes the structured action
         try:
-            proposed_action = await self.llm_provider.generate_action(
+            proposed_action = await active_llm_provider.generate_action(
                 user_message=message,
                 session_id=session_id,
                 available_tools=available_tools

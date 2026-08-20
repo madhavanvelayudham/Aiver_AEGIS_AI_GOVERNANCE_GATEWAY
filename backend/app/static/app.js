@@ -899,6 +899,9 @@ class AegisDashboard {
                 return;
             }
 
+            const providerEl = document.getElementById('sim-provider');
+            const provider = providerEl ? providerEl.value : 'mock';
+
             let traceData = {};
             let chatOk = true;
             // 2. Execute agent loop or evaluation
@@ -909,7 +912,8 @@ class AegisDashboard {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         session_id: sessionId,
-                        message: message
+                        message: message,
+                        llm_provider: provider
                     })
                 });
                 chatOk = chatRes.ok;

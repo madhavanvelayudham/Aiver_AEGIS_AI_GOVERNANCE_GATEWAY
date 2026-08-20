@@ -294,3 +294,55 @@ async def test_gemini_missing_required_args_rejection():
     settings.GEMINI_API_KEY = original_key
 
 
+@pytest.mark.anyio
+async def test_per_request_llm_provider_override(async_client):
+    """Verifies that sending llm_provider='mock' uses MockLLMProvider even if settings.LLM_PROVIDER='gemini'."""
+    settings = get_settings()
+    original_provider = settings.LLM_PROVIDER
+    settings.LLM_PROVIDER = "gemini"
+
+    # Provision fresh test session
+    await async_client.post("/api/v1/governance/sessions", json={
+        "session_id": "test-sim-mock-override",
+        "user_role": "doctor",
+        "data_classification": "internal"
+    })
+
+    # 1. Mock "read patient" with llm_provider="mock"
+    res_read = await async_client.post("/api/v1/agent/chat", json={
+        "session_id": "test-sim-mock-override",
+        "message": "Show patient record P101",
+        "llm_provider": "mock"
+    })
+    assert res_read.status_code == 200
+    data_read = res_read.json()
+    assert data_read["proposed_action"]["tool"] == "read_patient"
+    assert data_read["proposed_action"]["arguments"] == {"patient_id": "P101"}
+    assert data_read["governance"]["decision"] == "ALLOW"
+
+    # 2. Mock "update patient" with llm_provider="mock"
+    res_update = await async_client.post("/api/v1/agent/chat", json={
+        "session_id": "test-sim-mock-override",
+        "message": "Update patient diagnosis record P101",
+        "llm_provider": "mock"
+    })
+    assert res_update.status_code == 200
+    data_update = res_update.json()
+    assert data_update["proposed_action"]["tool"] == "update_patient"
+    assert data_update["proposed_action"]["arguments"] == {"patient_id": "P101", "notes": "Updated patient records."}
+
+    # 3. Mock "delete customer" with llm_provider="mock"
+    res_delete = await async_client.post("/api/v1/agent/chat", json={
+        "session_id": "test-sim-mock-override",
+        "message": "Delete customer C500",
+        "llm_provider": "mock"
+    })
+    assert res_delete.status_code == 200
+    data_delete = res_delete.json()
+    assert data_delete["proposed_action"]["tool"] == "delete_customer"
+    assert data_delete["proposed_action"]["arguments"] == {"customer_id": "C500"}
+
+    settings.LLM_PROVIDER = original_provider
+
+
+

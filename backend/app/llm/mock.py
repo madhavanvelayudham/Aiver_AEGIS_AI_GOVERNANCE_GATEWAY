@@ -62,7 +62,7 @@ class MockLLMProvider(LLMProvider):
                 data_scope_size=1
             )
             
-        elif "read" in msg_lower or "p101" in msg_lower or "p102" in msg_lower:
+        elif "show" in msg_lower or "read" in msg_lower or "p101" in msg_lower or "p102" in msg_lower:
             patient_id = "P101"
             if "p102" in msg_lower:
                 patient_id = "P102"

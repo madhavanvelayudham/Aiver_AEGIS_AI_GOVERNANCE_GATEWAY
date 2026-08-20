@@ -18,6 +18,7 @@ def get_agent_service(gov_service=Depends(get_governance_service)) -> AgentServi
 class AgentChatRequest(BaseModel):
     session_id: str = Field(..., description="The session ID associated with this chat.")
     message: str = Field(..., description="The message sent to the agent.")
+    llm_provider: Optional[str] = Field(None, description="Optional LLM provider override ('mock' or 'gemini').")
 
 
 class ProposedActionInfo(BaseModel):
@@ -70,6 +71,7 @@ async def agent_chat(
         session_id=request.session_id,
         message=request.message,
         db=db,
-        request_id=request_id
+        request_id=request_id,
+        llm_provider=request.llm_provider
     )
     return result
