@@ -11,14 +11,8 @@ router = APIRouter()
 
 from app.api.v1.governance import get_governance_service
 
-# Global AgentService cache
-_agent_service: Optional[AgentService] = None
-
 def get_agent_service(gov_service=Depends(get_governance_service)) -> AgentService:
-    global _agent_service
-    if _agent_service is None:
-        _agent_service = AgentService(governance_service=gov_service)
-    return _agent_service
+    return AgentService(governance_service=gov_service)
 
 
 class AgentChatRequest(BaseModel):

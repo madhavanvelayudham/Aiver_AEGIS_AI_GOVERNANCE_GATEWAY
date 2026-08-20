@@ -139,10 +139,12 @@ async def async_client():
     settings = get_settings()
     original_db_url = settings.DATABASE_URL
     original_seed = settings.SEED_DEMO_DATA
+    original_llm_provider = settings.LLM_PROVIDER
     
-    # Use isolated test DB for integration tests
+    # Use isolated test DB and mock LLM provider for integration tests
     settings.DATABASE_URL = "sqlite+aiosqlite:///./test_aegis.db"
     settings.SEED_DEMO_DATA = True
+    settings.LLM_PROVIDER = "mock"
     
     # Cleanup previous test db if any
     if os.path.exists("./test_aegis.db"):
@@ -171,6 +173,7 @@ async def async_client():
     # Reset settings and cleanup
     settings.DATABASE_URL = original_db_url
     settings.SEED_DEMO_DATA = original_seed
+    settings.LLM_PROVIDER = original_llm_provider
     
     # We delay removing the database file briefly to ensure all async pool connections are closed
     # but a simple try-except is fine.
