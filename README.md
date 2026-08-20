@@ -1,110 +1,711 @@
-# AEGIS — Dynamic Policy Rules Engine for AI Agents
+# AEGIS — AI Agent Governance Gateway
 
-**Aivar Innovations Agentic AI Challenge — PS-10.2**
+AEGIS is a context-aware governance gateway for AI agents. It evaluates an agent's proposed tool action against runtime context, dynamic risk, historical behavior, governance policies, and human approval requirements before the action reaches the ToolGateway.
 
-AEGIS is a production-oriented governance runtime that dynamically evaluates AI agent actions against runtime context and determines appropriate governance decisions.
+> **An LLM may propose an action, but the governance layer decides whether that action can execute.**
 
-## Architecture
+## Project Status
 
+**Completed and regression-tested**
+
+- **158 / 158 tests passing**
+- 0 test failures
+- End-to-end browser workflows verified
+- Scenario A — `ALLOW`
+- Scenario B — `REQUIRE_HITL` + approval
+- Scenario C — `SUSPEND_SESSION`
+- Behavioral anomaly detection verified with real session history
+- Exact audit-event correlation verified
+- Session isolation verified
+- HITL secure revalidation verified
+
+Latest verification:
+
+```text
+158 passed, 1678 warnings in 7.37s
 ```
-LLM Proposes → AEGIS Governs → Tools Execute Only After Governance
+
+The warnings are deprecation warnings, not test failures.
+
+---
+
+## 1. What is AEGIS?
+
+AI agents can propose actions such as:
+
+```text
+read_patient
+update_patient
+delete_customer
 ```
 
-Core flow:
-- AI Agent proposes a structured tool action
-- AEGIS constructs runtime context from server-side session state
-- Policy resolver loads and merges policies (with inheritance)
-- Rule evaluator deterministically evaluates conditions
-- Decision engine selects the highest-severity matched decision
-- Enforcement gateway executes the decision (ALLOW/BLOCK/HITL/SUSPEND)
+An LLM-generated action should not automatically be executed.
 
-## Current Status: Milestone 1 — Core Governance Engine
+AEGIS places a governance layer between the agent and the actual tool execution:
 
-### Implemented
-- [x] Deterministic policy DSL (YAML-based, no eval/exec)
-- [x] Policy validation (fields, operators, types, decisions)
-- [x] Policy inheritance (single-parent, circular detection)
-- [x] Rule evaluator (pure function, no side effects)
-- [x] Decision engine (severity + priority ordering)
-- [x] Runtime context builder (server-derived violation counts)
-- [x] Violation threshold logic (3rd violation → SUSPEND_SESSION)
-- [x] Database models (SQLAlchemy async, PostgreSQL-compatible)
-- [x] Core unit tests (15 test scenarios)
+```text
+                AI / LLM
+                   |
+                   | Proposed Action
+                   v
+          +-------------------+
+          |       AEGIS       |
+          | Governance Engine |
+          +-------------------+
+             |      |      |
+             v      v      v
+          Context  Risk  Behavior
+             |      |      |
+             +------+------+
+                    |
+                    v
+              Policy Engine
+                    |
+        +-----------+-----------+
+        |           |           |
+        v           v           v
+      ALLOW       HITL       BLOCK /
+                              SUSPEND
+        |           |
+        |           v
+        |     Human Review
+        |           |
+        |     Secure Revalidation
+        |           |
+        +-----------+
+              |
+              v
+        ToolGateway
+              |
+              v
+        Tool Execution
+```
 
-### Not Yet Implemented
-- [ ] REST API endpoints (Milestone 2)
-- [ ] Real LLM integration (Milestone 2)
-- [ ] HITL workflow endpoints (Milestone 2)
-- [ ] Frontend dashboard (Milestone 2)
-- [ ] Cloud deployment (Milestone 3)
+## 2. Complete Governance Workflow
 
-## Quick Start
+```text
+1. LLM proposes an action
+        ↓
+2. AEGIS receives the proposal
+        ↓
+3. Runtime context is built
+        ↓
+4. Historical session behavior is retrieved
+        ↓
+5. Behavioral anomaly analysis
+        ↓
+6. Dynamic risk calculation
+        ↓
+7. Policy evaluation
+        ↓
+8. Decision:
+   ALLOW / BLOCK / REQUIRE_HITL / SUSPEND_SESSION
+        ↓
+9. If HITL is required:
+   Human approval
+        ↓
+   Current context check
+        ↓
+   Current risk recalculation
+        ↓
+   Current policy reevaluation
+        ↓
+   ToolGateway execution
+        ↓
+10. Exact audit event records the trace
+```
 
-### Prerequisites
-- Python 3.11+
-- pip
+## 3. Runtime Context
 
-### Setup
+AEGIS evaluates actions using server-side context including:
+
+- User role
+- Data classification
+- Business-hours state
+- Previous session violations
+- Historical session events
+- Historical event count
+- Behavioral anomaly signals
+
+The simulator supports an explicit business-hours context for deterministic testing while preserving wall-clock calculation as the production default when no override is supplied.
+
+## 4. Dynamic Risk Analysis
+
+Risk is calculated server-side and accompanied by explainable factors.
+
+Examples:
+
+```text
+Low-risk search/read operation (+10)
+Medium-risk write/update operation (+25)
+High-risk delete/admin operation (+50)
+Sensitive PHI data classification (+20)
+Destructive write/delete tool (+20)
+Outside business hours (+10)
+Previous session violations (+10)
+```
+
+The frontend renders the server result; it does not calculate the risk score.
+
+## 5. Behavioral Anomaly Detection
+
+AEGIS analyzes actual historical audit events within the current session.
+
+Historical action extraction handles:
+
+- Audit-event columns
+- Dictionary `proposed_action`
+- JSON-string `proposed_action`
+- Missing/None values
+
+History is ordered chronologically:
+
+```text
+oldest → newest
+```
+
+This is essential for sequence-based behavioral analysis.
+
+### Real anomaly verification
+
+A session was tested with:
+
+```text
+READ
+READ
+READ
+READ
+READ
+READ
+DELETE
+```
+
+The analyzer produced:
+
+```text
+Historical events: 6
+Current action: delete_customer
+Anomaly Score: 100 / 100
+```
+
+Signals:
+
+```text
++40  First-time delete action type executed in session
++20  Novel tool access: delete_customer
++40  Critical sequence deviation:
+     transition from read-only history to delete
+```
+
+The anomaly value is generated by the behavioral analyzer. It is not hardcoded and is not calculated by the frontend.
+
+## 6. Governance Decisions
+
+### ALLOW
+
+The action satisfies applicable governance rules.
+
+Example:
+
+```text
+Doctor / Internal / Business Hours
+read_patient
+
+Risk: 20
+Anomaly: 0
+Decision: ALLOW
+Execution: ALLOWED & COMMITTED
+```
+
+### REQUIRE_HITL
+
+Human approval is required before execution.
+
+Example:
+
+```text
+Nurse / PHI / After Hours
+update_patient
+
+Risk: 55
+Anomaly: 0
+Decision: REQUIRE_HITL
+Execution: BLOCKED pending approval
+```
+
+After approval:
+
+```text
+HITL: APPROVED
+Tool: update_patient
+Execution: SUCCESSFUL
+```
+
+### BLOCK
+
+A governance rule prevents execution.
+
+```text
+Decision: BLOCK
+Tool Execution: BLOCKED
+```
+
+### SUSPEND_SESSION
+
+A critical violation can suspend the entire session.
+
+Example:
+
+```text
+Previous violations = 2
+Current violating action = +1
+Total violations = 3
+Threshold = 3
+
+Decision = SUSPEND_SESSION
+```
+
+## 7. HITL Secure Revalidation
+
+HITL approval follows:
+
+```text
+Pending resolution
+      ↓
+Current context check
+      ↓
+Current risk recalculation
+      ↓
+Current policy reevaluation
+      ↓
+ToolGateway execution trace
+```
+
+Approval is scoped to the applicable `REQUIRE_HITL` rule.
+
+Higher-priority `BLOCK` and `SUSPEND_SESSION` rules continue to prevent execution.
+
+## 8. Auditability
+
+Every governance evaluation produces an auditable event.
+
+The response contains an exact:
+
+```text
+audit_event_id
+```
+
+Exact lookup is available through:
+
+```text
+GET /api/v1/governance/audit_events/{event_id}
+```
+
+The Simulator and Trace Inspector correlate using the exact event ID rather than scanning session arrays or relying on frontend caches.
+
+The Trace Inspector exposes:
+
+1. Proposed Action
+2. Runtime Context
+3. Policy Evaluation
+4. Dynamic Risk Analysis
+5. Behavioral Analysis
+6. Final Governance Result & Execution Trail
+
+## 9. Session Isolation
+
+Simulator runs generate unique UUID-based sessions:
+
+```text
+sim-scenario-a-{uuid}
+sim-scenario-b-{uuid}
+sim-scenario-c-{uuid}
+```
+
+This prevents one scenario's historical events from contaminating another scenario's anomaly analysis.
+
+## 10. Forensic Root-Cause Fixes
+
+### Exact Audit Event Correlation
+
+Added `audit_event_id` to governance responses and implemented exact audit-event lookup.
+
+### Simulator Session Isolation
+
+Every simulator scenario run gets a new UUID session ID.
+
+### Removed Fake Inspector Data
+
+Hardcoded timeline entries and fake fallback values were removed.
+
+Missing/un-calculated values are represented as:
+
+```text
+N/A
+N/A (Not Calculated)
+```
+
+Suspended-session fast paths explicitly record when risk was not calculated.
+
+### Business-Hours Context
+
+Added explicit session business-hours context for deterministic simulator testing while retaining production wall-clock behavior when no override is provided.
+
+### Violation Terminology
+
+Trace Inspector now distinguishes:
+
+```text
+Previous Session Violations
+```
+
+from:
+
+```text
+Total Violations
+```
+
+The suspension boundary is:
+
+```text
+2 previous + 1 violating action = 3 total
+```
+
+### HITL Database Resolution
+
+Replaced unreliable SQLite async `rowcount` assumptions with atomic update and select-verification behavior.
+
+### HITL Revalidation
+
+Approval resolves only the applicable `REQUIRE_HITL` condition. Higher-priority blocking rules remain effective.
+
+### Null Action Handling
+
+Missing `proposed_action` values are handled safely and the UI renders:
+
+```text
+Unknown tool
+```
+
+### Behavioral History Root Cause Fix
+
+Historical events were previously vulnerable to:
+
+- JSON-string vs dictionary serialization differences
+- Incorrect fallback action/tool values
+- Newest-first ordering
+
+These were corrected so the anomaly analyzer receives accurate chronological history.
+
+Anomaly provenance was also propagated through the runtime context so the Trace Inspector can display server-derived historical counts and anomaly signals.
+
+## 11. Verified Scenarios
+
+| Scenario | Context | Risk | Anomaly | Decision |
+|---|---|---:|---:|---|
+| A | Doctor / Internal / Business Hours / Read | 20 | 0 | **ALLOW** |
+| B | Nurse / PHI / After Hours / Write | 55 | 0 | **REQUIRE_HITL** |
+| C | Nurse / PHI / After Hours / Delete / 2 previous violations | 100 | 0 | **SUSPEND_SESSION** |
+| Anomaly Demo | Nurse / PHI / Read history → Delete | 100 | **100** | **Governance policy enforced** |
+
+The anomaly detector remains analytically separate from policy enforcement; the deciding rule is authoritative.
+
+## 12. Technology Stack
+
+### Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- SQLite
+- Pydantic
+
+### Governance
+
+- Policy Engine
+- Dynamic Risk Engine
+- Behavioral Anomaly Analyzer
+- Session Management
+- HITL Service
+- Audit/Event system
+- ToolGateway
+
+### Frontend
+
+- HTML
+- CSS
+- JavaScript
+- Browser-based governance console
+
+### Testing
+
+- Pytest
+- API regression tests
+- Governance/risk tests
+- HITL tests
+- Browser QA regression tests
+- Behavioral anomaly regression tests
+- Integration tests
+
+## 13. Project Structure
+
+```text
+Aiver_AEGIS_AI_GOVERNANCE_GATEWAY/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── services/
+│   │   └── static/
+│   │
+│   ├── tests/
+│   ├── requirements.txt
+│   └── ...
+│
+├── policies/
+│   ├── base_policy.yaml
+│   ├── healthcare_policy.yaml
+│   └── hospital_policy.yaml
+│
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## 14. Local Setup
+
+Clone:
+
 ```bash
+git clone https://github.com/madhavanvelayudham/Aiver_AEGIS_AI_GOVERNANCE_GATEWAY.git
+cd Aiver_AEGIS_AI_GOVERNANCE_GATEWAY
+```
+
+Create the environment:
+
+```powershell
+python -m venv backend/.venv
+```
+
+Activate on Windows:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.ackend\.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```powershell
+pip install -r backend/requirements.txt
+```
+
+Create `.env` from `.env.example` and configure the required local values.
+
+**Never commit `.env` or API keys.**
+
+## 15. Run the Test Suite
+
+From the repository root:
+
+```powershell
+python -m pytest backend/tests/ -q
+```
+
+Expected verified result:
+
+```text
+158 passed
+```
+
+Verbose mode:
+
+```powershell
+python -m pytest backend/tests/ -v
+```
+
+## 16. Run the Application
+
+```powershell
 cd backend
-python -m venv .venv
-.venv\Scripts\activate    # Windows
-source .venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-### Environment
-```bash
-cp ../.env.example ../.env
+Open:
+
+```text
+http://localhost:8000
 ```
 
-### Run Tests
-```bash
-cd backend
-python -m pytest tests/ -v
+The console provides:
+
+- Dashboard
+- Live Events
+- HITL Queue
+- Policies
+- Risk & Behavior
+- Simulator
+- Sessions
+
+## 17. Recommended Demonstration
+
+### Scenario A
+
+```text
+Doctor
+Internal
+Business Hours = YES
+read_patient
 ```
 
-### Start Server
-```bash
-cd backend
-uvicorn app.main:app --reload
+Expected:
+
+```text
+ALLOW
+Risk = 20
+Anomaly = 0
 ```
 
-## Environment Variables
+### Scenario B
 
-| Variable | Default | Description |
-|---|---|---|
-| DATABASE_URL | sqlite+aiosqlite:///./aegis.db | Database connection string |
-| BUSINESS_HOURS_START | 09:00 | Business hours start (UTC) |
-| BUSINESS_HOURS_END | 17:00 | Business hours end (UTC) |
-| VIOLATION_THRESHOLD | 3 | Violations before session suspension |
-| LLM_PROVIDER | mock | LLM provider (mock/gemini) |
-| DEFAULT_POLICY_ID | base_policy | Default policy for new sessions |
-
-## Policy DSL
-
-Policies are defined in YAML with deterministic, declarative conditions:
-
-```yaml
-rules:
-  - id: example_rule
-    priority: 100
-    decision: BLOCK
-    condition:
-      all:
-        - field: action.type
-          operator: equals
-          value: write
-        - field: context.is_business_hours
-          operator: equals
-          value: false
+```text
+Nurse
+PHI
+Business Hours = NO
+update_patient
 ```
 
-### Supported Operators
-equals, not_equals, greater_than, greater_than_or_equals, less_than, less_than_or_equals, in, not_in, contains
+Expected:
 
-### Governance Decisions
-ALLOW, BLOCK, REQUIRE_HITL, SUSPEND_SESSION
+```text
+REQUIRE_HITL
+Risk = 55
+Anomaly = 0
+```
 
-## License
-Internal — Aivar Innovations Challenge
+Approve from the HITL queue and verify that the action executes after revalidation.
+
+### Scenario C
+
+```text
+Nurse
+PHI
+Business Hours = NO
+Previous violations = 2
+delete_customer
+```
+
+Expected:
+
+```text
+SUSPEND_SESSION
+Risk = 100
+Anomaly = 0
+Total violations = 3
+Execution = BLOCKED
+```
+
+### Behavioral anomaly demonstration
+
+Create a session history containing:
+
+```text
+READ × 6
+```
+
+Then propose:
+
+```text
+DELETE
+```
+
+Expected:
+
+```text
+Anomaly = 100
+```
+
+with explainable signals.
+
+## 18. Engineering Principles
+
+### Server-authoritative decisions
+
+Risk, anomaly, context, policy decisions, and audit information are calculated server-side.
+
+### No fabricated metrics
+
+The application does not manufacture anomaly or risk values to satisfy the UI.
+
+### Exact audit correlation
+
+Trace inspection uses the exact `audit_event_id`.
+
+### Session isolation
+
+Behavioral histories are isolated by session.
+
+### Policy precedence
+
+Higher-priority blocking/suspension rules cannot be bypassed through HITL approval.
+
+### Secure revalidation
+
+Human approval does not blindly replay a stale decision.
+
+### Explainability
+
+Risk factors and anomaly signals are exposed as server-derived evidence.
+
+### Regression safety
+
+Architectural fixes are covered by regression tests.
+
+## 19. Final Verification
+
+The project progressed from:
+
+```text
+154 passed
+```
+
+to:
+
+```text
+158 passed
+```
+
+after adding behavioral anomaly regression coverage.
+
+Final verified state:
+
+```text
+158 passed
+0 failures
+```
+
+Verified workflows:
+
+```text
+ALLOW
+REQUIRE_HITL
+BLOCK
+SUSPEND_SESSION
+Behavioral anomaly detection
+Audit event inspection
+Session isolation
+HITL approval/revalidation
+Violation threshold handling
+Risk calculation
+Runtime context calculation
+```
+
+## 20. Repository
+
+https://github.com/madhavanvelayudham/Aiver_AEGIS_AI_GOVERNANCE_GATEWAY
+
+## AEGIS in One Sentence
+
+> **AEGIS is a server-authoritative AI agent governance gateway that evaluates proposed tool actions using runtime context, dynamic risk, historical behavior, policy rules, and human approval before permitting execution.**
