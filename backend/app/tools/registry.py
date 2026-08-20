@@ -54,12 +54,25 @@ class ToolRegistry:
     def __init__(self):
         self._tools = {}
 
-    def register(self, name: str, description: str, action_type: str, func: Callable):
+    def register(
+        self,
+        name: str,
+        description: str,
+        action_type: str,
+        func: Callable,
+        required_args: Optional[list[str]] = None
+    ):
+        if required_args is None:
+            import inspect
+            sig = inspect.signature(func)
+            required_args = list(sig.parameters.keys())
+
         self._tools[name] = {
             "name": name,
             "description": description,
             "action_type": action_type,
-            "func": func
+            "func": func,
+            "required_args": required_args
         }
 
     def get_tool(self, name: str) -> Optional[dict]:

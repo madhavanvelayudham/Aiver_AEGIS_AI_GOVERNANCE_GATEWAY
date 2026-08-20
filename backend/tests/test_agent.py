@@ -210,3 +210,87 @@ async def test_prompt_injection_resistance(async_client):
     # Intercepted and governed as REQUIRE_HITL, NOT ALLOW. Tool not executed.
     assert data["governance"]["decision"] == "REQUIRE_HITL"
     assert data["tool_execution"]["executed"] is False
+
+
+@pytest.mark.anyio
+async def test_gemini_429_rate_limit_sanitization():
+    """Verifies that Gemini 429 rate-limit errors are caught and sanitized with zero API key exposure."""
+    settings = get_settings()
+    original_key = settings.GEMINI_API_KEY
+    settings.GEMINI_API_KEY = "test_dummy_key_12345"
+
+    provider = GeminiProvider()
+
+    # Mock httpx.AsyncClient to simulate a 429 response
+    import httpx
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        with pytest.raises(ValueError) as exc_info:
+            await provider.generate_action(
+                user_message="update patient record P101",
+                session_id="test-session",
+                available_tools=[{"name": "update_patient", "description": "update patient", "action_type": "write", "required_args": ["patient_id", "notes"]}]
+            )
+        err_msg = str(exc_info.value)
+        assert "rate-limited" in err_msg
+        assert "test_dummy_key_12345" not in err_msg
+        assert "?key=" not in err_msg
+
+    settings.GEMINI_API_KEY = original_key
+
+
+@pytest.mark.anyio
+async def test_registered_tools_required_arguments():
+    """Verifies that registered tools in ToolRegistry accurately inspect or report required_args."""
+    registry = ToolRegistry()
+    def sample_func(patient_id: str, notes: str):
+        pass
+    registry.register("test_update", "description", "write", sample_func)
+    tool = registry.get_tool("test_update")
+    assert tool["required_args"] == ["patient_id", "notes"]
+
+
+@pytest.mark.anyio
+async def test_gemini_missing_required_args_rejection():
+    """Verifies that Gemini responses with missing required arguments are strictly rejected without argument invention."""
+    settings = get_settings()
+    original_key = settings.GEMINI_API_KEY
+    settings.GEMINI_API_KEY = "test_dummy_key_12345"
+
+    provider = GeminiProvider()
+
+    import httpx
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {"text": json.dumps({"tool": "update_patient", "arguments": {}, "action_type": "write", "data_scope_size": 1})}
+                    ]
+                }
+            }
+        ]
+    }
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        with pytest.raises(ValueError) as exc_info:
+            await provider.generate_action(
+                user_message="update patient record",
+                session_id="test-session",
+                available_tools=[{"name": "update_patient", "description": "update patient", "action_type": "write", "required_args": ["patient_id", "notes"]}]
+            )
+        err_msg = str(exc_info.value)
+        assert "missing required arguments" in err_msg
+
+    settings.GEMINI_API_KEY = original_key
+
+

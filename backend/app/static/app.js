@@ -687,7 +687,13 @@ class AegisDashboard {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reviewer, reason })
             });
-            const data = await res.json();
+            let data = {};
+            try {
+                const text = await res.text();
+                data = JSON.parse(text);
+            } catch (e) {
+                data = { detail: res.statusText || 'Server returned non-JSON response.' };
+            }
             
             await sleep(400);
             if (res.ok && data.status === 'APPROVED') {
@@ -882,12 +888,18 @@ class AegisDashboard {
             });
             
             if (!sessRes.ok) {
-                const errData = await sessRes.json();
-                output.textContent = `Session provision failed: ${errData.detail || 'Internal error'}`;
+                let errDetail = 'Internal error';
+                try {
+                    const errData = await sessRes.json();
+                    errDetail = errData.detail || errDetail;
+                } catch (e) {
+                    errDetail = sessRes.statusText || errDetail;
+                }
+                output.textContent = `Session provision failed: ${errDetail}`;
                 return;
             }
 
-            let traceData;
+            let traceData = {};
             let chatOk = true;
             // 2. Execute agent loop or evaluation
             if (message) {
@@ -900,8 +912,13 @@ class AegisDashboard {
                         message: message
                     })
                 });
-                traceData = await chatRes.json();
                 chatOk = chatRes.ok;
+                try {
+                    const text = await chatRes.text();
+                    traceData = JSON.parse(text);
+                } catch (e) {
+                    traceData = { detail: chatRes.statusText || 'Server returned non-JSON response.' };
+                }
             } else {
                 // If no user message provided, run evaluate directly with a default read action
                 const evalRes = await fetch('/api/v1/governance/evaluate', {
@@ -917,8 +934,13 @@ class AegisDashboard {
                         }
                     })
                 });
-                traceData = await evalRes.json();
                 chatOk = evalRes.ok;
+                try {
+                    const text = await evalRes.text();
+                    traceData = JSON.parse(text);
+                } catch (e) {
+                    traceData = { detail: evalRes.statusText || 'Server returned non-JSON response.' };
+                }
             }
 
             if (!chatOk) {
