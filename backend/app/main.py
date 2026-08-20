@@ -1,3 +1,4 @@
+import os
 import yaml
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -20,7 +21,17 @@ from app.api.v1.hitl import router as hitl_router
 
 async def sync_policies():
     """Reads YAML policies from directory and synchronizes them to DB tables on startup."""
-    policy_dir = Path("D:/AIver_One_day/policies")
+    policy_dir_env = os.getenv("POLICY_DIR")
+    if policy_dir_env and Path(policy_dir_env).exists():
+        policy_dir = Path(policy_dir_env)
+    elif Path("/app/policies").exists():
+        policy_dir = Path("/app/policies")
+    elif Path("../policies").exists():
+        policy_dir = Path("../policies")
+    elif Path("D:/AIver_One_day/policies").exists():
+        policy_dir = Path("D:/AIver_One_day/policies")
+    else:
+        policy_dir = Path("policies")
     loader = PolicyLoader()
     # Verify policy validity at startup
     loader.load_policies_from_directory(policy_dir)

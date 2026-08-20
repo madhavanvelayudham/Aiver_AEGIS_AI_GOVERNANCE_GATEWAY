@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -22,7 +23,17 @@ def get_governance_service() -> GovernanceService:
     global _governance_service
     if _governance_service is None:
         _governance_service = GovernanceService()
-        policy_dir = Path("D:/AIver_One_day/policies")
+        policy_dir_env = os.getenv("POLICY_DIR")
+        if policy_dir_env and Path(policy_dir_env).exists():
+            policy_dir = Path(policy_dir_env)
+        elif Path("/app/policies").exists():
+            policy_dir = Path("/app/policies")
+        elif Path("../policies").exists():
+            policy_dir = Path("../policies")
+        elif Path("D:/AIver_One_day/policies").exists():
+            policy_dir = Path("D:/AIver_One_day/policies")
+        else:
+            policy_dir = Path("policies")
         _governance_service.load_policies_from_directory(policy_dir)
     return _governance_service
 
